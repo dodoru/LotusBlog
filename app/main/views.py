@@ -3,6 +3,7 @@
 from datetime import datetime
 from flask import render_template, session, redirect, url_for, flash
 
+
 from . import main
 from .forms import NameForm
 from .. import db
@@ -27,4 +28,5 @@ def index():
                            name=session.get('name'),
                            known=session.get('known', False),
                            current_time=datetime.utcnow())
+
 
