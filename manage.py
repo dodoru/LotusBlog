@@ -14,24 +14,27 @@ app = create_app(os.getenv('LOTUS_CONFIG') or 'default')
 manager = Manager(app)
 migrate = Migrate(app, db)
 
-
+# fixme
 def make_shell_context():
     return dict(app=app, db=db, User=User, Role=Role)
 
 
+
 manager.add_command('shell', Shell(make_context=make_shell_context()))
 manager.add_command('db', MigrateCommand)
+print manager.command
 
 
-# 启动单元测试命令
-@manager.command()
+# 启动单元测试命令 fixme
+@manager.command
 def test():
     '''run the unit tests '''
     import unittest
-
     tests = unittest.TestLoader().discover('tests')
-    unittest.TextTestRunner(verbosity=2).run('tests')
+    unittest.TextTestRunner(verbosity=2).run(tests)
 
 
 if __name__ == '__main__':
+    print manager.command
+    print "*" * 10
     manager.run()
