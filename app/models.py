@@ -1,5 +1,6 @@
 # coding:utf-8
-'''
+
+"""
 generate_password_hash(password, method=pbkdf2:sha1, salt_length=8) ：
 这个函数将原始密码作为输入, 以字符串形式输出密码的散列值， 输出的值可保存在用户数据库中。
 method 和 salt_length 的默认值就能满足大多数需求。
@@ -13,7 +14,7 @@ is_authenticated() 如果用户已经登录，必须返回 True ，否则返回 
 is_active() 如果允许用户登录，必须返回 True ，否则返回 False 。如果要禁用账户，可以返回 False
 is_anonymous() 对普通用户必须返回 False
 get_id() 必须返回用户的唯一标识符，使用 Unicode 编码字符串
-'''
+"""
 
 import hashlib
 import bleach
@@ -80,9 +81,9 @@ class Follow(db.Model):
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
-    email=db.Column(db.String(20),unique=True,index=True)
-    username=db.Column(db.String(20),unique=True,index=True)
-    role_id=db.Column(db.Integer,db.ForeignKey('roles.id'))
+    email = db.Column(db.String(20), unique=True, index=True)
+    username = db.Column(db.String(20), unique=True, index=True)
+    role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
     # role=db.relationship('Role',backref='users')
     password_hash = db.Column(db.String(128))
     confirmed = db.Column(db.Boolean, default=False)
@@ -102,6 +103,7 @@ class User(db.Model):
     # cascade 参数配置在父对象上执行的操作对相关对象的影响,将用户添加到数据库会话后，要自动把所有关系的对象都添加到会话中。
     # cascade 删除对象时，默认把对象联接的所有相关对象的外键设为空值,
     # delete-orphan ,在关联表中 ,删除记录后,把指向该记录的实体也删除，因为这样能有效销毁联接。
+
     followed = db.relationship('Follow',
                                foreign_keys=[Follow.follower_id],
                                backref=db.backref('follower', lazy='joined'),
@@ -171,10 +173,124 @@ class User(db.Model):
     def verify_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    def generate_confirmation_token(self, expiration=3600):
+        s = Serializer(current_app.config['SECRET_KEY'], expiration)
+        return s.dumps({'confirm_id': self.id})
+
+    def confirm(self, token):
+        s = Serializer(current_app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token)
+        except:
+            return False
+        if data.get('confirm_id') != self.id:
+            return False
+        self.confirmed = True
+        db.session.add(self)
+        return True
+
+    def generator_reset_token(self, expiration=3600):
+        s = Serializer(current_app.config['SECRET_KEY'])
+        return s.dumps({'reset_id': self.id})
+
+    def reset_password(self, token, new_password):
+        s = Serializer(current_app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token)
+        except:
+            return False
+        if data.get('reset_id') != self.id:
+            return False
+        self.password = new_password
+        db.session.add(self)
+        return True
+
+    def generate_email_change_token(self, new_email, expiration=3600):
+        s = Serializer(current_app.config['SECRET_KEY'])
+        return s.dumps({'change_email_id': self.id, 'new_email': new_email})
+
+    def change_email(self, token):
+        s = Serializer(current_app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token)
+        except:
+            return False
+        if data.get('change_email_id') != self.id:
+            return False
+        new_email = data.get('new_email')
+        if new_email is None:
+            return False
+        if self.query.filter(User.email == new_email).first():
+            return False
+        self.email = new_email
+        self.avatar_hash = hashlib.md5(self.email.encode('utf-8')).hexdigest()
+        db.session.add(self)
+        try:
+            db.session.commit()
+        except:
+            db.session.rollback()
+        return True
+
+    def can(self, permissions):
+        return self.role is not None and (self.role.permissions & permissions) == permissions
+
+    def is_administrator(self):
+        return self.can(Permission.ADMINISTER)
+
+    def ping(self):
+        self.last_seen = datetime.utcnow()
+        db.session.add(self)
+
+    def gravatar(self, size=100, default='identicon', rating='g'):
+        if request.is_secure:
+            url = 'https://secure.gravatar.com/avatar'
+        else:
+            url = 'http://secure.gravatar.com/avatar'
+        hash = self.avatar_hash or hashlib.md5(self.email.encode('utf-8')).hexdigest()
+        return '{0}/{1}?s={2}&d={3}&r={4}'.format(url, hash, size, default, rating)
+
+    def follow(self, user):
+        if not self.is_following(user):
+            f = Follow(follower=self, followed=user)
+            db.session.add(f)
+
+    def unfollow(self, user):
+        f = self.query.filter_by(followed_id=user.id).first()
+        if f:
+            db.session.delete(f)
+
+    def is_following(self, user):
+        return self.followed.filter_by(followed_id=user.id).first() is not None
+
+    def is_followed_by(self, user):
+        return self.followers.filter_by(follower_id=user.id).first() is not None
+
+    @property
+    def followed_posts(self):
+        return Post.query.join(Follow, Follow.followed_id == Post.author_id).filter(Follow.follower_id == self.id)
+
+    def __repr__(self):
+        return '<User {0}, {1}>'.format(self.username, self.email)
+
+
+# fixme
+class AnonymousUser(AnonymouseUserMixin):
+    pass
+
+
+class Post():
+    pass
+
+
+
+
+
+
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
 
 def test():
     u = User()
