@@ -1,17 +1,19 @@
 # coding:utf-8
 
 from datetime import datetime
-from flask import render_template, session, redirect, url_for, flash
+from flask import render_template, session, redirect, url_for, flash, request, current_app, make_response
+from flask.ext.login import login_required, current_user
 
 from . import main
-from .forms import NameForm
+from .forms import EditProfileAdminForm, EditProfileForm, PostForm, CommentForm
 from .. import db
-from ..models import User
+from ..models import User, Role, Permission, Post, Comment
+from ..decorators import admin_required, permission_required
 
 # diff:路由修饰器由蓝本提供；
 @main.route('/', methods=['GET', 'POST'])
 def index():
-    form = NameForm()
+    form = PostForm()
     if form.validate_on_submit():
         # ...
         '''
